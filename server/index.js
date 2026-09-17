@@ -42,10 +42,15 @@ function safeSend(ws, data) {
 
 // ─── HTTP Server & Health Check ───────────────────────────────────────────────
 const server = http.createServer((req, res) => {
+  // If this is an upgrade request, let the upgrade listener handle it
+  if (req.headers.upgrade && req.headers.upgrade.toLowerCase() === 'websocket') {
+    return;
+  }
+
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
 
-  if (req.url === '/health' || req.url === '/') {
+  if (req.url === '/health') {
     res.writeHead(200);
     res.end(JSON.stringify({
       status: 'ok',
@@ -57,12 +62,30 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.url === '/' || req.url === '') {
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      status: 'ok',
+      service: 'ShareDrop Signaling Server',
+      message: 'WebSocket endpoint ready. Connect via wss://',
+      activeRooms: rooms.size,
+      connectedPeers: sockets.size,
+    }));
+    return;
+  }
+
   res.writeHead(404);
   res.end(JSON.stringify({ error: 'Not found' }));
 });
 
-// ─── WebSocket Server ─────────────────────────────────────────────────────────
-const wss = new WebSocketServer({ server });
+// ─── WebSocket Server (Explicit Upgrade Handling) ─────────────────────────────
+const wss = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (request, socket, head) => {
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.emit('connection', ws, request);
+  });
+});
 
 wss.on('connection', (ws) => {
   let boundPeerId = null;
@@ -254,6 +277,6 @@ setInterval(() => {
   }
 }, 60000);
 
-server.listen(PORT, () => {
-  console.log(`🚀 ShareDrop Signaling Server listening on port ${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 ShareDrop Signaling Server listening on 0.0.0.0:${PORT}`);
 });

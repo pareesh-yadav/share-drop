@@ -1,0 +1,16 @@
+{
+  "name": "sharedrop-signaling-server",
+  "version": "1.0.0",
+  "description": "Production WebRTC Signaling Server for ShareDrop",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

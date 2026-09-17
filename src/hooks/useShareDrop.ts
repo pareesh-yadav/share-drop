@@ -30,10 +30,21 @@ import { generateFileId, generateTransferId } from '../utils/crypto';
 import { PROTOCOL_VERSION } from '../types';
 
 function createTransport(): SignalingManager {
-  const useLocal = import.meta.env.VITE_USE_LOCAL_SIGNALING === 'true'
-    || !import.meta.env.VITE_SIGNALING_URL;
+  const isLocalHost = typeof window !== 'undefined'
+    && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-  if (useLocal) {
+  const configuredUrl = import.meta.env.VITE_SIGNALING_URL as string | undefined;
+
+  // Auto-connect to current host in production (e.g. Railway) if no explicit URL is passed
+  const autoUrl = typeof window !== 'undefined' && !isLocalHost
+    ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
+    : '';
+
+  const activeUrl = configuredUrl || autoUrl;
+
+  const forceLocal = import.meta.env.VITE_USE_LOCAL_SIGNALING === 'true';
+
+  if (forceLocal || (!activeUrl && isLocalHost)) {
     if (!features.broadcastChannel()) {
       throw new Error('BroadcastChannel not supported. Set VITE_SIGNALING_URL for production.');
     }
@@ -41,9 +52,8 @@ function createTransport(): SignalingManager {
     return new SignalingManager(new LocalSignalingTransport());
   }
 
-  const url = import.meta.env.VITE_SIGNALING_URL as string;
-  logger.app.info(`Using WebSocketSignalingTransport: ${url}`);
-  return new SignalingManager(new WebSocketSignalingTransport(url));
+  logger.app.info(`Using WebSocketSignalingTransport: ${activeUrl}`);
+  return new SignalingManager(new WebSocketSignalingTransport(activeUrl));
 }
 
 export function useShareDrop() {

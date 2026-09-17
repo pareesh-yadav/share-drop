@@ -9,6 +9,7 @@
     "typecheck": "tsc -b --noEmit",
     "lint": "oxlint",
     "preview": "vite preview",
+    "start": "node server/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -36,6 +37,7 @@
     "react-router-dom": "^7.18.4",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
+    "ws": "^8.18.0",
     "zod": "^4.6.5",
     "zustand": "^5.0.15"
   },

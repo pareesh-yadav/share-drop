@@ -1,6 +1,37 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Check if dist folder exists (e.g. built by vite in root or server directory)
+const DIST_DIR = fs.existsSync(path.resolve(__dirname, '../dist'))
+  ? path.resolve(__dirname, '../dist')
+  : path.resolve(__dirname, './dist');
+
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.ttf': 'font/ttf',
+  '.mp3': 'audio/mpeg',
+  '.txt': 'text/plain; charset=utf-8',
+};
 
 const PORT = Number(process.env.PORT) || 8080;
 const PROTOCOL_VERSION = 1;
@@ -40,7 +71,7 @@ function safeSend(ws, data) {
   }
 }
 
-// ─── HTTP Server & Health Check ───────────────────────────────────────────────
+// ─── HTTP Server & Static Asset Serving ───────────────────────────────────────
 const server = http.createServer((req, res) => {
   // If this is an upgrade request, let the upgrade listener handle it
   if (req.headers.upgrade && req.headers.upgrade.toLowerCase() === 'websocket') {
@@ -48,9 +79,10 @@ const server = http.createServer((req, res) => {
   }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Content-Type', 'application/json');
 
+  // Health check endpoint
   if (req.url === '/health') {
+    res.setHeader('Content-Type', 'application/json');
     res.writeHead(200);
     res.end(JSON.stringify({
       status: 'ok',
@@ -62,7 +94,45 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // If built frontend exists in dist, serve static assets & SPA fallback
+  if (fs.existsSync(DIST_DIR)) {
+    const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const filePath = path.join(DIST_DIR, parsedUrl.pathname);
+
+    // Prevent directory traversal
+    if (!filePath.startsWith(DIST_DIR)) {
+      res.writeHead(403);
+      res.end('Forbidden');
+      return;
+    }
+
+    // Serve matching static file with correct MIME type
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      const ext = path.extname(filePath).toLowerCase();
+      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        ...(ext === '.js' || ext === '.css' ? { 'Cache-Control': 'public, max-age=31536000, immutable' } : {}),
+      });
+      fs.createReadStream(filePath).pipe(res);
+      return;
+    }
+
+    // SPA fallback: return index.html for all client-side routes (/room/*, /join/*, etc.)
+    const indexPath = path.join(DIST_DIR, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-cache',
+      });
+      fs.createReadStream(indexPath).pipe(res);
+      return;
+    }
+  }
+
+  // Standalone signaling mode fallback
   if (req.url === '/' || req.url === '') {
+    res.setHeader('Content-Type', 'application/json');
     res.writeHead(200);
     res.end(JSON.stringify({
       status: 'ok',
